@@ -205,15 +205,13 @@ proc main() {
        *****/
       p.drop();
 
-      /* spherical */  // TODO atomic
+      // TODO atomic
       p.spherical();
       Csph[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
-      /* cylindrical */
       p.cylindrical();
       Ccyl[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
-      /* planar */
       p.planar();
       Cpla[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
@@ -245,7 +243,6 @@ proc main() {
   writef("r [cm] \t Fsph [1/cm2] \t Fcyl [1/cm2] \t Fpla [1/cm2]\n");
 
   /* print data:  radial position, fluence rates for 3D, 2D, 1D geometries */
-  /*for (ir=0; ir<=NR; ir++) {*/
   for ir in 0..NR {
     /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
     const r = (ir + 0.5)*dr;
