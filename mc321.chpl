@@ -65,15 +65,18 @@ proc main() {
   var	Fsph: real;       /* fluence in spherical shell */
   var	Fcyl: real;       /* fluence in cylindrical shell */
   var	Fpla: real;       /* fluence in planar shell */
-  var	mua: real;        /* absorption coefficient [cm^-1] */
-  var	mus: real;        /* scattering coefficient [cm^-1] */
-  var	g: real;          /* anisotropy [-] */
-  var	albedo: real;     /* albedo of tissue */
-  var	nt: real;         /* tissue index of refraction */
-  var   NR: int(16);         /* number of radial positions */
-  var	radial_size: real;  /* maximum radial size */
+
+  const	mua = 1.0;        /* absorption coefficient [cm^-1] */
+  const	mus = 0.0;        /* scattering coefficient [cm^-1] */
+  const	g = 0.90;          /* anisotropy [-] */
+  const	nt = 1.33;         /* tissue index of refraction */
+  const	radial_size = 3.0;  /* maximum radial size */
+  /* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
+  const NR: int(16) = 100;         /* number of radial positions */
+  const dr = radial_size/NR;         /* radial bin size */
+  const	albedo = mus/(mus+mua);     /* albedo of tissue */
+
   var	r: real;          /* radial position */
-  var   dr: real;         /* radial bin size */
   var   ir: int(16);         /* index to radial position */
   var   shellvolume: real;  /* volume of shell at radial position r */
 
@@ -81,23 +84,6 @@ proc main() {
   var  rnd: real;        /* assigned random value 0-1 */
   var  temp: real;    /* dummy variables */
   /*FILE*	target;     [> point to output file <]*/
-
-
-  /**** INPUT
-    Input the optical properties
-    Input the bin and array sizes
-    Input the number of photons
-   *****/
-
-  mua         = 1.0;     /* cm^-1 */
-  mus         = 0.0;  /* cm^-1 */
-  g           = 0.90;
-  nt          = 1.33;
-  radial_size = 3.0;   /* cm, total range over which bins extend */
-  NR          = 100;	 /* set number of bins.  */
-  /* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
-  dr          = radial_size/NR;  /* cm */
-  albedo      = mus/(mus + mua);
 
 
   /**** INITIALIZATIONS
