@@ -179,11 +179,6 @@ proc main() {
   var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
   var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
-  /* dummy variables */
-  var  temp: real;    /* dummy variables */
-  /*FILE*	target;     [> point to output file <]*/
-
-
   /**** INITIALIZATIONS
    *****/
   InitRandomGen;
