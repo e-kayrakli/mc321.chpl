@@ -62,9 +62,6 @@ proc main() {
   var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
   var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
   var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
-  var	Fsph: real;       /* fluence in spherical shell */
-  var	Fcyl: real;       /* fluence in cylindrical shell */
-  var	Fpla: real;       /* fluence in planar shell */
 
   const	mua = 1.0;        /* absorption coefficient [cm^-1] */
   const	mus = 0.0;        /* scattering coefficient [cm^-1] */
@@ -78,7 +75,6 @@ proc main() {
 
   var	r: real;          /* radial position */
   var   ir: int(16);         /* index to radial position */
-  var   shellvolume: real;  /* volume of shell at radial position r */
 
   /* dummy variables */
   var  rnd: real;        /* assigned random value 0-1 */
@@ -237,12 +233,15 @@ proc main() {
   for ir in 0..NR {
     /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
     r = (ir + 0.5)*dr;
-    shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
-    Fsph = Csph[ir]/Nphotons/shellvolume/mua;
+    var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
+    /* fluence in spherical shell */
+    const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
     shellvolume = 2.0*PI*r*dr;   /* per cm length of cylinder */
-    Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
+    /* fluence in cylindrical shell */
+    const Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
     shellvolume = dr;            /* per cm2 area of plane */
-    Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
+    /* fluence in planar shell */
+    const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
     writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
   }
 
