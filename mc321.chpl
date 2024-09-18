@@ -187,9 +187,7 @@ proc main() {
     Launch N photons, initializing each one before progation.
    *****/
   for i_photon in 0..<Nphotons {
-
     var p: photon;
-
 
     /* HOP_DROP_SPIN_CHECK
        Propagate one photon until it dies as determined by ROULETTE.
@@ -201,7 +199,6 @@ proc main() {
         ux, uy, uz are cosines of current photon trajectory
        *****/
       p.hop();
-
 
       /**** DROP
         Drop photon weight (W) into local bin.
@@ -220,7 +217,6 @@ proc main() {
       p.planar();
       Cpla[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
-
       /**** SPIN
         Scatter photon into new trajectory defined by theta and psi.
         Theta is specified by cos(theta), which is determined
@@ -230,13 +226,10 @@ proc main() {
       p.spin();
 
       /**** CHECK ROULETTE
-        If photon weight below THRESHOLD, then terminate photon using Roulette technique.
-        Photon has CHANCE probability of having its weight increased by factor of 1/CHANCE,
-        and 1-CHANCE probability of terminating.
-       *****/
+        If photon weight below THRESHOLD, then terminate photon using Roulette
+        technique.  Photon has CHANCE probability of having its weight increased
+        by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
       p.update();
-
-
     } /* end STEP_CHECK_HOP_SPIN */
     while (p.photon_status == ALIVE);
 
