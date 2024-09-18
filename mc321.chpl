@@ -42,42 +42,144 @@ inline proc RandomNum do return RandomGen(1, 0): real;
 
 config const	Nphotons = 10_000_000;   /* number of photons in simulation */
 
-proc main() {
+const	mua = 1.0;        /* absorption coefficient [cm^-1] */
+const	mus = 0.0;        /* scattering coefficient [cm^-1] */
+const	g = 0.90;          /* anisotropy [-] */
+const	nt = 1.33;         /* tissue index of refraction */
+const	radial_size = 3.0;  /* maximum radial size */
+/* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
+const NR: int(16) = 100;         /* number of radial positions */
+const dr = radial_size/NR;         /* radial bin size */
+const	albedo = mus/(mus+mua);     /* albedo of tissue */
 
+record photon {
   /* Propagation parameters */
-  var	x, y, z:real;    /* photon position */
-  var	ux, uy, uz:real; /* photon trajectory as cosines */
-  var  uxx, uyy, uzz:real;	/* temporary values used during SPIN */
-  var	s:real;          /* step sizes. s = -log(RND)/mus [cm] */
-  var	costheta:real;   /* cos(theta) */
-  var  sintheta:real;   /* sin(theta) */
-  var	cospsi:real;     /* cos(psi) */
-  var  sinpsi:real;     /* sin(psi) */
-  var	psi:real;        /* azimuthal angle */
-  var	W:real;          /* photon weight */
-  var	absorb:real;     /* weighted deposited in a step due to absorption */
-  var   photon_status: int;  /* flag = ALIVE=1 or DEAD=0 */ // TODO enum
+  var x, y, z:real;    /* photon position */
+  var ux, uy, uz:real; /* photon trajectory as cosines */
+  var s:real;          /* step sizes. s = -log(RND)/mus [cm] */
+  var costheta:real;   /* cos(theta) */
+  var sintheta:real;   /* sin(theta) */
+  var cospsi:real;     /* cos(psi) */
+  var sinpsi:real;     /* sin(psi) */
+  var psi:real;        /* azimuthal angle */
+  var W:real;          /* photon weight */
+  var absorb:real;     /* weighted deposited in a step due to absorption */
+  var photon_status: int;  /* flag = ALIVE=1 or DEAD=0 */ // TODO enum
 
+  var	r: real;          /* radial position */
+  var   ir: int(16);         /* index to radial position */
+}
+
+proc photon.init() {
+  init this;
+  /**** LAUNCH
+    Initialize photon position and trajectory.
+    Implements an isotropic point source.
+   *****/
+  W = 1.0;                    /* set photon weight to one */
+  photon_status = ALIVE;      /* Launch an ALIVE photon */
+
+  x = 0;                      /* Set photon position to origin. */
+  y = 0;
+  z = 0;
+
+  /* Randomly set photon trajectory to yield an isotropic source. */
+  costheta = 2.0*RandomNum - 1.0;
+  sintheta = sqrt(1.0 - costheta*costheta);	/* sintheta is always positive */
+  psi = 2.0*PI*RandomNum;
+  ux = sintheta*cos(psi);
+  uy = sintheta*sin(psi);
+  uz = costheta;
+}
+
+proc ref photon.hop() {
+  var  rnd: real;        /* assigned random value 0-1 */
+  do { rnd = RandomNum; } while rnd <= 0.0; /* yields 0 < rnd <= 1 */
+  s = -log(rnd)/(mua + mus);          /* Step size.  Note: log() is base e */
+  x += s * ux;                        /* Update positions. */
+  y += s * uy;
+  z += s * uz;
+
+}
+
+proc ref photon.drop() {
+  absorb = W*(1 - albedo);      /* photon weight absorbed at this step */
+  W -= absorb;                  /* decrement WEIGHT by amount absorbed */
+}
+
+proc ref photon.spherical() {
+  r = sqrt(x*x + y*y + z*z);    /* current spherical radial position */
+  ir = (r/dr): int(16);           /* ir = index to spatial bin */
+  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+}
+
+proc ref photon.cylindrical() {
+  r = sqrt(x*x + y*y);          /* current cylindrical radial position */
+  ir = (r/dr): int(16);           /* ir = index to spatial bin */
+  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+}
+
+proc ref photon.planar() {
+  r = abs(z);                  /* current planar radial position */
+  ir = (r/dr): int(16);           /* ir = index to spatial bin */
+  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+}
+
+proc ref photon.spin() {
+  var uxx, uyy, uzz:real;	/* temporary values used during SPIN */
+  /* Sample for costheta */
+  var rnd = RandomNum;
+  if (g == 0.0) {
+    costheta = 2.0*rnd - 1.0;
+  }
+  else {
+    const temp = (1.0 - g*g)/(1.0 - g + 2*g*rnd);
+    costheta = (1.0 + g*g - temp*temp)/(2.0*g);
+  }
+  sintheta = sqrt(1.0 - costheta*costheta); /* sqrt() is faster than sin(). */
+
+  /* Sample psi. */
+  psi = 2.0*PI*RandomNum;
+  cospsi = cos(psi);
+  if (psi < PI) then
+    sinpsi = sqrt(1.0 - cospsi*cospsi);     /* sqrt() is faster than sin(). */
+  else
+    sinpsi = -sqrt(1.0 - cospsi*cospsi);
+
+  /* New trajectory. */
+  if (1 - abs(uz) <= ONE_MINUS_COSZERO) {      /* close to perpendicular. */
+    uxx = sintheta * cospsi;
+    uyy = sintheta * sinpsi;
+    uzz = costheta * SIGN(uz);   /* SIGN() is faster than division. */
+  }
+  else {					/* usually use this option */
+    const temp = sqrt(1.0 - uz * uz);
+    uxx = sintheta * (ux * uz * cospsi - uy * sinpsi) / temp + ux * costheta;
+    uyy = sintheta * (uy * uz * cospsi + ux * sinpsi) / temp + uy * costheta;
+    uzz = -sintheta * cospsi * temp + uz * costheta;
+  }
+
+  /* Update trajectory */
+  ux = uxx;
+  uy = uyy;
+  uz = uzz;
+}
+
+proc ref photon.update() {
+  if (W < THRESHOLD) {
+    if (RandomNum <= CHANCE) then
+      W /= CHANCE;
+    else photon_status = DEAD;
+  }
+}
+
+proc main() {
   /* other variables */
   var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
   var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
   var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
-  const	mua = 1.0;        /* absorption coefficient [cm^-1] */
-  const	mus = 0.0;        /* scattering coefficient [cm^-1] */
-  const	g = 0.90;          /* anisotropy [-] */
-  const	nt = 1.33;         /* tissue index of refraction */
-  const	radial_size = 3.0;  /* maximum radial size */
-  /* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
-  const NR: int(16) = 100;         /* number of radial positions */
-  const dr = radial_size/NR;         /* radial bin size */
-  const	albedo = mus/(mus+mua);     /* albedo of tissue */
-
-  var	r: real;          /* radial position */
-  var   ir: int(16);         /* index to radial position */
-
   /* dummy variables */
-  var  rnd: real;        /* assigned random value 0-1 */
   var  temp: real;    /* dummy variables */
   /*FILE*	target;     [> point to output file <]*/
 
@@ -90,67 +192,38 @@ proc main() {
     Launch N photons, initializing each one before progation.
    *****/
   for i_photon in 0..<Nphotons {
-    /**** LAUNCH
-      Initialize photon position and trajectory.
-      Implements an isotropic point source.
-     *****/
-    W = 1.0;                    /* set photon weight to one */
-    photon_status = ALIVE;      /* Launch an ALIVE photon */
 
-    x = 0;                      /* Set photon position to origin. */
-    y = 0;
-    z = 0;
-
-    /* Randomly set photon trajectory to yield an isotropic source. */
-    costheta = 2.0*RandomNum - 1.0;
-    sintheta = sqrt(1.0 - costheta*costheta);	/* sintheta is always positive */
-    psi = 2.0*PI*RandomNum;
-    ux = sintheta*cos(psi);
-    uy = sintheta*sin(psi);
-    uz = costheta;
+    var p: photon;
 
 
     /* HOP_DROP_SPIN_CHECK
        Propagate one photon until it dies as determined by ROULETTE.
      *******/
     do {
-
-
       /**** HOP
         Take step to new position
         s = stepsize
         ux, uy, uz are cosines of current photon trajectory
        *****/
-      do { rnd = RandomNum; } while rnd <= 0.0; /* yields 0 < rnd <= 1 */
-      s = -log(rnd)/(mua + mus);          /* Step size.  Note: log() is base e */
-      x += s * ux;                        /* Update positions. */
-      y += s * uy;
-      z += s * uz;
+      p.hop();
 
 
       /**** DROP
         Drop photon weight (W) into local bin.
        *****/
-      absorb = W*(1 - albedo);      /* photon weight absorbed at this step */
-      W -= absorb;                  /* decrement WEIGHT by amount absorbed */
+      p.drop();
 
-      /* spherical */
-      r = sqrt(x*x + y*y + z*z);    /* current spherical radial position */
-      ir = (r/dr): int(16);           /* ir = index to spatial bin */
-      if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
-      Csph[ir] += absorb;           /* DROP absorbed weight into bin */
+      /* spherical */  // TODO atomic
+      p.spherical();
+      Csph[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
       /* cylindrical */
-      r = sqrt(x*x + y*y);          /* current cylindrical radial position */
-      ir = (r/dr): int(16);           /* ir = index to spatial bin */
-      if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
-      Ccyl[ir] += absorb;           /* DROP absorbed weight into bin */
+      p.cylindrical();
+      Ccyl[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
       /* planar */
-      r = abs(z);                  /* current planar radial position */
-      ir = (r/dr): int(16);           /* ir = index to spatial bin */
-      if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
-      Cpla[ir] += absorb;           /* DROP absorbed weight into bin */
+      p.planar();
+      Cpla[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
 
 
       /**** SPIN
@@ -159,58 +232,18 @@ proc main() {
         based on the Henyey-Greenstein scattering function.
         Convert theta and psi into cosines ux, uy, uz.
        *****/
-      /* Sample for costheta */
-      rnd = RandomNum;
-      if (g == 0.0) {
-        costheta = 2.0*rnd - 1.0;
-      }
-      else {
-        var temp = (1.0 - g*g)/(1.0 - g + 2*g*rnd);
-        costheta = (1.0 + g*g - temp*temp)/(2.0*g);
-      }
-      sintheta = sqrt(1.0 - costheta*costheta); /* sqrt() is faster than sin(). */
-
-      /* Sample psi. */
-      psi = 2.0*PI*RandomNum;
-      cospsi = cos(psi);
-      if (psi < PI) then
-        sinpsi = sqrt(1.0 - cospsi*cospsi);     /* sqrt() is faster than sin(). */
-      else
-        sinpsi = -sqrt(1.0 - cospsi*cospsi);
-
-      /* New trajectory. */
-      if (1 - abs(uz) <= ONE_MINUS_COSZERO) {      /* close to perpendicular. */
-        uxx = sintheta * cospsi;
-        uyy = sintheta * sinpsi;
-        uzz = costheta * SIGN(uz);   /* SIGN() is faster than division. */
-      }
-      else {					/* usually use this option */
-        temp = sqrt(1.0 - uz * uz);
-        uxx = sintheta * (ux * uz * cospsi - uy * sinpsi) / temp + ux * costheta;
-        uyy = sintheta * (uy * uz * cospsi + ux * sinpsi) / temp + uy * costheta;
-        uzz = -sintheta * cospsi * temp + uz * costheta;
-      }
-
-      /* Update trajectory */
-      ux = uxx;
-      uy = uyy;
-      uz = uzz;
-
+      p.spin();
 
       /**** CHECK ROULETTE
         If photon weight below THRESHOLD, then terminate photon using Roulette technique.
         Photon has CHANCE probability of having its weight increased by factor of 1/CHANCE,
         and 1-CHANCE probability of terminating.
        *****/
-      if (W < THRESHOLD) {
-        if (RandomNum <= CHANCE) then
-          W /= CHANCE;
-        else photon_status = DEAD;
-      }
+      p.update();
 
 
     } /* end STEP_CHECK_HOP_SPIN */
-    while (photon_status == ALIVE);
+    while (p.photon_status == ALIVE);
 
     /* If photon dead, then launch new photon. */
   } /* end RUN */
@@ -232,7 +265,7 @@ proc main() {
   /*for (ir=0; ir<=NR; ir++) {*/
   for ir in 0..NR {
     /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
-    r = (ir + 0.5)*dr;
+    const r = (ir + 0.5)*dr;
     var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
     /* fluence in spherical shell */
     const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
