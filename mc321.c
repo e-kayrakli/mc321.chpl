@@ -99,7 +99,7 @@ int main() {
   mus         = 0.0;  /* cm^-1 */
   g           = 0.90;
   nt          = 1.33;
-  Nphotons    = 10000000; /* set number of photons in simulation */
+  Nphotons    = 100000000; /* set number of photons in simulation */
   radial_size = 3.0;   /* cm, total range over which bins extend */
   NR          = 100;	 /* set number of bins.  */
   /* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */

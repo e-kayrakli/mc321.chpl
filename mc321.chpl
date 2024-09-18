@@ -40,6 +40,7 @@ inline proc InitRandomGen do return RandomGen(0, 1): real;
 inline proc RandomNum do return RandomGen(1, 0): real;
 /* Calls for a random number from the randum number generator. */
 
+config const	Nphotons = 10_000_000;   /* number of photons in simulation */
 
 proc main() {
 
@@ -70,7 +71,6 @@ proc main() {
   var	g: real;          /* anisotropy [-] */
   var	albedo: real;     /* albedo of tissue */
   var	nt: real;         /* tissue index of refraction */
-  var	Nphotons: real;   /* number of photons in simulation */
   var   NR: int(16);         /* number of radial positions */
   var	radial_size: real;  /* maximum radial size */
   var	r: real;          /* radial position */
@@ -94,7 +94,6 @@ proc main() {
   mus         = 0.0;  /* cm^-1 */
   g           = 0.90;
   nt          = 1.33;
-  Nphotons    = 10000000; /* set number of photons in simulation */
   radial_size = 3.0;   /* cm, total range over which bins extend */
   NR          = 100;	 /* set number of bins.  */
   /* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
