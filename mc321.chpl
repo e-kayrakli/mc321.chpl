@@ -54,7 +54,6 @@ proc main() {
   var	cospsi:real;     /* cos(psi) */
   var  sinpsi:real;     /* sin(psi) */
   var	psi:real;        /* azimuthal angle */
-  var	i_photon:real;   /* current photon */
   var	W:real;          /* photon weight */
   var	absorb:real;     /* weighted deposited in a step due to absorption */
   var   photon_status: int;  /* flag = ALIVE=1 or DEAD=0 */ // TODO enum
@@ -103,20 +102,16 @@ proc main() {
 
   /**** INITIALIZATIONS
    *****/
-  i_photon = 0;
   InitRandomGen;
 
   /**** RUN
     Launch N photons, initializing each one before progation.
    *****/
-  do {
-
-
+  for i_photon in 0..<Nphotons {
     /**** LAUNCH
       Initialize photon position and trajectory.
       Implements an isotropic point source.
      *****/
-    i_photon += 1;	/* increment photon count */
     W = 1.0;                    /* set photon weight to one */
     photon_status = ALIVE;      /* Launch an ALIVE photon */
 
@@ -237,7 +232,6 @@ proc main() {
 
     /* If photon dead, then launch new photon. */
   } /* end RUN */
-  while (i_photon < Nphotons);
 
 
   /**** SAVE
