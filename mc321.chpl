@@ -243,11 +243,6 @@ proc main() {
     /* If photon dead, then launch new photon. */
   } /* end RUN */
 
-
-  /**** SAVE
-    Convert data to relative fluence rate [cm^-2] and save to file called "mcmin321.out".
-   *****/
-
   /* print header */
   writef("number of photons = %i\n", Nphotons);
   writef("bin size = %5.5dr [cm] \n", dr);
@@ -272,10 +267,7 @@ proc main() {
     const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
     writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
   }
-
-
 } /* end of main */
-
 
 
 /* SUBROUTINES */
