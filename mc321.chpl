@@ -282,9 +282,9 @@ proc main() {
       writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
     }
 
-    for (ux, uy, uz, costheta) in zip(uxs, uys, uzs, costhetas) {
-      writeln(ux, " ", uy, " ", uz, " ", costheta);
-    }
+    /*for (ux, uy, uz, costheta) in zip(uxs, uys, uzs, costhetas) {*/
+      /*writeln(ux, " ", uy, " ", uz, " ", costheta);*/
+    /*}*/
   }
 } /* end of main */
 
