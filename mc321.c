@@ -24,6 +24,12 @@
 #include <math.h>
 #include <stdio.h>
 
+
+
+
+
+
+
 #define	PI          3.1415926
 #define	LIGHTSPEED	2.997925E10 /* in vacuo speed of light [cm/s] */
 #define ALIVE       1   		/* if photon not yet terminated */
@@ -244,6 +250,8 @@ int main() {
 
     } /* end STEP_CHECK_HOP_SPIN */
     while (photon_status == ALIVE);
+
+    printf("%f %f %f %f\n", ux, uy, uz, psi);
 
     /* If photon dead, then launch new photon. */
   } /* end RUN */

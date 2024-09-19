@@ -21,36 +21,9 @@
  *  Trivial fixes to remove warnings SAP, 11/2017
  **********/
 
-use Math;
-
-param PI         = 3.1415926;
-param LIGHTSPEED = 2.997925E10; /* in vacuo speed of light [cm/s] */
-param ALIVE      = 1;		/* if photon not yet terminated */
-param DEAD       = 0;		/* if photon is to be terminated */
-param THRESHOLD  = 0.01;		/* used in roulette */
-param CHANCE     = 0.1;		/* used in roulette */
-param COS90D     = 1.0E-6;
-/* If cos(theta) <= COS90D, theta >= PI/2 - 1e-6 rad. */
-param ONE_MINUS_COSZERO = 1.0E-12;
-/* If 1-cos(theta) <= ONE_MINUS_COSZERO, fabs(theta) <= 1e-6 rad. */
-/* If 1+cos(theta) <= ONE_MINUS_COSZERO, fabs(PI-theta) <= 1e-6 rad. */
-inline proc SIGN(x) do return (if x>=0 then 1 else 1);
-inline proc InitRandomGen do return RandomGen(0, 1): real;
-/* Initializes the seed for the random number generator. */
-inline proc RandomNum do return RandomGen(1, 0): real;
-/* Calls for a random number from the randum number generator. */
-
-config const	Nphotons = 10_000_000;   /* number of photons in simulation */
-
-const	mua = 1.0;        /* absorption coefficient [cm^-1] */
-const	mus = 0.0;        /* scattering coefficient [cm^-1] */
-const	g = 0.90;          /* anisotropy [-] */
-const	nt = 1.33;         /* tissue index of refraction */
-const	radial_size = 3.0;  /* maximum radial size */
-/* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
-const NR: int(16) = 100;         /* number of radial positions */
-const dr = radial_size/NR;         /* radial bin size */
-const	albedo = mus/(mus+mua);     /* albedo of tissue */
+require "curand_kernel.h";
+require "kernel_rng.h";
+extern type curandState_t;
 
 record photon {
   /* Propagation parameters */
@@ -68,9 +41,43 @@ record photon {
 
   var	r: real;          /* radial position */
   var   ir: int(16);         /* index to radial position */
+
+  var rng: curandState_t;
 }
 
-proc photon.init() {
+
+pragma "codegen for CPU and GPU"
+extern proc rng_init(seed, idx, ref state: curandState_t): void;
+
+use Math, GPU;
+
+config const	Nphotons = 10_000_000;   /* number of photons in simulation */
+
+param PI         = 3.1415926;
+param LIGHTSPEED = 2.997925E10; /* in vacuo speed of light [cm/s] */
+param ALIVE      = 1;		/* if photon not yet terminated */
+param DEAD       = 0;		/* if photon is to be terminated */
+param THRESHOLD  = 0.01;		/* used in roulette */
+param CHANCE     = 0.1;		/* used in roulette */
+param COS90D     = 1.0E-6;
+/* If cos(theta) <= COS90D, theta >= PI/2 - 1e-6 rad. */
+param ONE_MINUS_COSZERO = 1.0E-12;
+/* If 1-cos(theta) <= ONE_MINUS_COSZERO, fabs(theta) <= 1e-6 rad. */
+/* If 1+cos(theta) <= ONE_MINUS_COSZERO, fabs(PI-theta) <= 1e-6 rad. */
+inline proc SIGN(x) do return (if x>=0 then 1 else -1);
+
+
+param	mua = 1.0;        /* absorption coefficient [cm^-1] */
+param	mus = 0.0;        /* scattering coefficient [cm^-1] */
+param	g = 0.90;          /* anisotropy [-] */
+param	nt = 1.33;         /* tissue index of refraction */
+param	radial_size = 3.0;  /* maximum radial size */
+/* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
+param NR: int(16) = 100;         /* number of radial positions */
+param dr = radial_size/NR;         /* radial bin size */
+param	albedo = mus/(mus+mua);     /* albedo of tissue */
+
+proc photon.init(idx) {
   init this;
   /**** LAUNCH
     Initialize photon position and trajectory.
@@ -90,6 +97,15 @@ proc photon.init() {
   ux = sintheta*cos(psi);
   uy = sintheta*sin(psi);
   uz = costheta;
+
+  rng_init(1, idx, rng);
+}
+
+/* Calls for a random number from the randum number generator. */
+proc ref photon.RandomNum {
+  pragma "codegen for CPU and GPU"
+  extern proc rng_get(ref state: curandState_t): real;
+  return rng_get(rng);
 }
 
 proc ref photon.hop() {
@@ -99,7 +115,6 @@ proc ref photon.hop() {
   x += s * ux;                        /* Update positions. */
   y += s * uy;
   z += s * uz;
-
 }
 
 proc ref photon.drop() {
@@ -115,7 +130,7 @@ proc ref photon.spherical() {
 
 proc ref photon.cylindrical() {
   r = sqrt(x*x + y*y);          /* current cylindrical radial position */
-  ir = (r/dr): int(16);           /* ir = index to spatial bin */
+  ir = (r/dr): int(16);           /*[> ir = index to spatial bin <]*/
   if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
 }
 
@@ -173,178 +188,107 @@ proc ref photon.update() {
   }
 }
 
+config const useGpu = true;
+
 proc main() {
-  /* other variables */
-  var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
-  var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
-  var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
+  on if useGpu then here.gpus[0] else here {
+    /* other variables */
+    var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
+    var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
+    var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
-  /**** INITIALIZATIONS
-   *****/
-  InitRandomGen;
+    var uxs, uys, uzs, costhetas: [0..<Nphotons] real;
 
-  /**** RUN
-    Launch N photons, initializing each one before progation.
-   *****/
-  for i_photon in 0..<Nphotons {
-    var p: photon;
+    /**** INITIALIZATIONS
+     *****/
 
-    /* HOP_DROP_SPIN_CHECK
-       Propagate one photon until it dies as determined by ROULETTE.
-     *******/
-    do {
-      /**** HOP
-        Take step to new position
-        s = stepsize
-        ux, uy, uz are cosines of current photon trajectory
-       *****/
-      p.hop();
+    /**** RUN
+      Launch N photons, initializing each one before progation.
+     *****/
+    @gpu.assertEligible
+    foreach i_photon in 0..<Nphotons {
+      var p = new photon(i_photon);
 
-      /**** DROP
-        Drop photon weight (W) into local bin.
-       *****/
-      p.drop();
+      /* HOP_DROP_SPIN_CHECK
+         Propagate one photon until it dies as determined by ROULETTE.
+       *******/
+      do {
+        /**** HOP
+          Take step to new position
+          s = stepsize
+          ux, uy, uz are cosines of current photon trajectory
+         *****/
+        p.hop();
 
-      // TODO atomic
-      p.spherical();
-      Csph[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
+        /**** DROP
+          Drop photon weight (W) into local bin.
+         *****/
+        p.drop();
 
-      p.cylindrical();
-      Ccyl[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
+        p.spherical();
+        gpuAtomicAdd(Csph[p.ir], p.absorb);  /* DROP absorbed weight into bin */
 
-      p.planar();
-      Cpla[p.ir] += p.absorb;           /* DROP absorbed weight into bin */
+        p.cylindrical();
+        gpuAtomicAdd(Ccyl[p.ir], p.absorb);   /* DROP absorbed weight into bin */
 
-      /**** SPIN
-        Scatter photon into new trajectory defined by theta and psi.
-        Theta is specified by cos(theta), which is determined
-        based on the Henyey-Greenstein scattering function.
-        Convert theta and psi into cosines ux, uy, uz.
-       *****/
-      p.spin();
+        p.planar();
+        gpuAtomicAdd(Cpla[p.ir], p.absorb);           /* DROP absorbed weight into bin */
 
-      /**** CHECK ROULETTE
-        If photon weight below THRESHOLD, then terminate photon using Roulette
-        technique.  Photon has CHANCE probability of having its weight increased
-        by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
-      p.update();
-    } /* end STEP_CHECK_HOP_SPIN */
-    while (p.photon_status == ALIVE);
+        /**** SPIN
+          Scatter photon into new trajectory defined by theta and psi.
+          Theta is specified by cos(theta), which is determined
+          based on the Henyey-Greenstein scattering function.
+          Convert theta and psi into cosines ux, uy, uz.
+         *****/
+        p.spin();
 
-    /* If photon dead, then launch new photon. */
-  } /* end RUN */
+        /**** CHECK ROULETTE
+          If photon weight below THRESHOLD, then terminate photon using Roulette
+          technique.  Photon has CHANCE probability of having its weight increased
+          by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
+        p.update();
+      } /* end STEP_CHECK_HOP_SPIN */
+      while (p.photon_status == ALIVE);
 
-  /* print header */
-  writef("number of photons = %i\n", Nphotons);
-  writef("bin size = %5.5dr [cm] \n", dr);
-  writef("last row is overflow. Ignore.\n");
+      uxs[i_photon] = p.ux;
+      uys[i_photon] = p.uy;
+      uzs[i_photon] = p.uz;
+      costhetas[i_photon] = p.psi;
 
-  /* print column titles */
-  writef("r [cm] \t Fsph [1/cm2] \t Fcyl [1/cm2] \t Fpla [1/cm2]\n");
+      /* If photon dead, then launch new photon. */
+    } /* end RUN */
 
-  /* print data:  radial position, fluence rates for 3D, 2D, 1D geometries */
-  for ir in 0..NR {
-    /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
-    const r = (ir + 0.5)*dr;
-    var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
-    /* fluence in spherical shell */
-    const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
-    shellvolume = 2.0*PI*r*dr;   /* per cm length of cylinder */
-    /* fluence in cylindrical shell */
-    const Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
-    shellvolume = dr;            /* per cm2 area of plane */
-    /* fluence in planar shell */
-    const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
-    writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
+    /* print header */
+    writef("number of photons = %i\n", Nphotons);
+    writef("bin size = %5.5dr [cm] \n", dr);
+    writef("last row is overflow. Ignore.\n");
+
+    /* print column titles */
+    writef("r [cm] \t Fsph [1/cm2] \t Fcyl [1/cm2] \t Fpla [1/cm2]\n");
+
+    /* print data:  radial position, fluence rates for 3D, 2D, 1D geometries */
+    for ir in 0..NR {
+      /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
+      const r = (ir + 0.5)*dr;
+      var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
+      /* fluence in spherical shell */
+      const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
+      shellvolume = 2.0*PI*r*dr;   /* per cm length of cylinder */
+      /* fluence in cylindrical shell */
+      const Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
+      shellvolume = dr;            /* per cm2 area of plane */
+      /* fluence in planar shell */
+      const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
+      writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
+    }
+
+    for (ux, uy, uz, costheta) in zip(uxs, uys, uzs, costhetas) {
+      writeln(ux, " ", uy, " ", uz, " ", costheta);
+    }
   }
 } /* end of main */
 
 
 /* SUBROUTINES */
 
-/**************************************************************************
- *	RandomGen
- *      A random number generator that generates uniformly
- *      distributed random numbers between 0 and 1 inclusive.
- *      The algorithm is based on:
- *      W.H. Press, S.A. Teukolsky, W.T. Vetterling, and B.P.
- *      Flannery, "Numerical Recipes in C," Cambridge University
- *      Press, 2nd edition, (1992).
- *      and
- *      D.E. Knuth, "Seminumerical Algorithms," 2nd edition, vol. 2
- *      of "The Art of Computer Programming", Addison-Wesley, (1981).
- *
- *      When Type is 0, sets Seed as the seed. Make sure 0<Seed<32000.
- *      When Type is 1, returns a random number.
- *      When Type is 2, gets the status of the generator.
- *      When Type is 3, restores the status of the generator.
- *
- *      The status of the generator is represented by Status[0..56].
- *
- *      Make sure you initialize the seed before you get random
- *      numbers.
- ****/
-param MBIG = 1000000000;
-param MSEED = 161803398;
-param MZ = 0;
-param FAC = 1.0E-9;
-
-var i1, i2: int;
-var ma: [0..55] int;   /* ma[0] is not used. */
-
-proc RandomGen(Type, Seed) {
-  var        mj, mk: int;
-  var       i, ii: int(16);
-
-  if (Type == 0) {              /* set seed. */
-    mj = MSEED - (if Seed < 0 then -Seed else Seed);
-    mj %= MBIG;
-    ma[55] = mj;
-    mk = 1;
-    for i in 1..54 {
-      ii = ((21 * i) % 55): int(16);
-      ma[ii] = mk;
-      mk = mj - mk;
-      if (mk < MZ) then
-        mk += MBIG;
-      mj = ma[ii];
-    }
-    for ii in 1..4 {
-      for i in 1..55 {
-        ma[i] -= ma[1 + (i + 30) % 55];
-        if (ma[i] < MZ) then
-          ma[i] += MBIG;
-      }
-    }
-    i1 = 0;
-    i2 = 31;
-  } else if (Type == 1) {       /* get a number. */
-    i1 += 1;
-    if (i1 == 56) then
-      i1 = 1;
-    i2 += 1;
-    if (i2 == 56) then
-      i2 = 1;
-    mj = ma[i1] - ma[i2];
-    if (mj < MZ) then
-      mj += MBIG;
-    ma[i1] = mj;
-    return (mj * FAC);
-  }
-  /*else if (Type == 2) {       [> get status. <]*/
-    /*[>for (i = 0; i < 55; i++)<]*/
-    /*for i in 0..<55 do*/
-      /*Status[i] = ma[i + 1];*/
-    /*Status[55] = i1;*/
-    /*Status[56] = i2;*/
-  /*} else if (Type == 3) {       [> restore status. <]*/
-    /*for i in 0..<55 do*/
-      /*ma[i + 1] = Status[i];*/
-    /*i1 = Status[55];*/
-    /*i2 = Status[56];*/
-  /*}*/
-  else
-    writeln("Wrong parameter to RandomGen().");
-  return 0;
-}
 
