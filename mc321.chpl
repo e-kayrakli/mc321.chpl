@@ -193,11 +193,6 @@ proc main() {
     var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
     var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
-    var uxs, uys, uzs, costhetas: [0..<Nphotons] real;
-
-    /**** INITIALIZATIONS
-     *****/
-
     /**** RUN
       Launch N photons, initializing each one before progation.
      *****/
@@ -246,11 +241,6 @@ proc main() {
       } /* end STEP_CHECK_HOP_SPIN */
       while (p.photon_status == ALIVE);
 
-      uxs[i_photon] = p.ux;
-      uys[i_photon] = p.uy;
-      uzs[i_photon] = p.uz;
-      costhetas[i_photon] = p.psi;
-
       /* If photon dead, then launch new photon. */
     } /* end RUN */
 
@@ -277,14 +267,5 @@ proc main() {
       const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
       writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
     }
-
-    /*for (ux, uy, uz, costheta) in zip(uxs, uys, uzs, costhetas) {*/
-      /*writeln(ux, " ", uy, " ", uz, " ", costheta);*/
-    /*}*/
   }
 } /* end of main */
-
-
-/* SUBROUTINES */
-
-
