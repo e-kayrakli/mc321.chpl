@@ -20,3 +20,14 @@
   some issues launching the kernel with that. Instead, `-suseCudaRng=true` can
   be used to use CUDA's RNG, which works fine.
 
+### Performance
+
+Just using `time`, I see that the Chapel version runs in 32 seconds compared to
+C's 69 seconds using 1B photons. The GPU-enabled Chapel version is right now the
+first working prototype and can benefit from several optimizations.
+
+
+- CPU: i5-11400 (6 cores)
+- GPU: RTX A2000
+- Chapel 2.2 (compiled with only `--fast`)
+- gcc 13.2 (compiled with `-O3 -lm`)
