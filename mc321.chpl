@@ -21,9 +21,13 @@
  *  Trivial fixes to remove warnings SAP, 11/2017
  **********/
 
-require "curand_kernel.h";
-require "kernel_rng.h";
-extern type curandState_t;
+
+use Math, GPU;
+use RandomNumberGenerators;
+
+config param useCudaRng = false;
+type RNG = if useCudaRng then CudaRng else Mc321Rng;
+
 
 record photon {
   /* Propagation parameters */
@@ -42,14 +46,8 @@ record photon {
   var	r: real;          /* radial position */
   var   ir: int(16);         /* index to radial position */
 
-  var rng: curandState_t;
+  var rng: RNG;
 }
-
-
-pragma "codegen for CPU and GPU"
-extern proc rng_init(seed, idx, ref state: curandState_t): void;
-
-use Math, GPU;
 
 config const	Nphotons = 10_000_000;   /* number of photons in simulation */
 
@@ -78,6 +76,8 @@ param dr = radial_size/NR;         /* radial bin size */
 param	albedo = mus/(mus+mua);     /* albedo of tissue */
 
 proc photon.init(idx) {
+  rng = new RNG(idx);
+
   init this;
   /**** LAUNCH
     Initialize photon position and trajectory.
@@ -97,15 +97,11 @@ proc photon.init(idx) {
   ux = sintheta*cos(psi);
   uy = sintheta*sin(psi);
   uz = costheta;
-
-  rng_init(1, idx, rng);
 }
 
 /* Calls for a random number from the randum number generator. */
 proc ref photon.RandomNum {
-  pragma "codegen for CPU and GPU"
-  extern proc rng_get(ref state: curandState_t): real;
-  return rng_get(rng);
+  return rng.next();
 }
 
 proc ref photon.hop() {

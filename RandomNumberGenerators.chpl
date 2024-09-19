@@ -1,18 +1,40 @@
-module Mc321Rng {
+module RandomNumberGenerators {
+  require "curand_kernel.h";
+  require "kernel_rng.h";
+  extern type curandState_t;
+
+  pragma "codegen for CPU and GPU"
+  extern proc rng_init(seed, idx, ref state: curandState_t): void;
+
+  pragma "codegen for CPU and GPU"
+  extern proc rng_get(ref state: curandState_t): real;
 
   record Mc321Rng {
     var i1, i2: int;
-    var ma: [1..55] int;
+    var ma: 56*int;
 
     proc init(seed) {
       init this;
       RandomGen(0, seed, i1, i2, ma);
     }
 
-    inline proc next() {
+    inline proc ref next() {
       return RandomGen(1, 0, i1, i2, ma);
     }
 
+  }
+
+  record CudaRng {
+    var rng: curandState_t;
+
+    proc init(idx) {
+      init this;
+      rng_init(1, idx, rng);
+    }
+
+    inline proc ref next() {
+      return rng_get(rng);
+    }
   }
 
 
@@ -45,10 +67,9 @@ module Mc321Rng {
   private param MZ = 0;
   private param FAC = 1.0E-9;
 
-  /*var i1, i2: int;*/
-  /*var ma: [0..55] int;   [> ma[0] is not used. <]*/
-
-  proc RandomGen(Type, Seed, i1: int, i2: int, ref ma: [] int) {
+  // TODO this could be refactored into helpers to avoid Type
+  proc RandomGen(param Type, Seed, ref i1: int, ref i2: int, ref ma: 56*int) {
+    if Type != 0 && Type != 1 then compilerError("Wrong type");
     var        mj, mk: int;
     var       i, ii: int(16);
 
@@ -99,8 +120,6 @@ module Mc321Rng {
     /*i1 = Status[55];*/
     /*i2 = Status[56];*/
     /*}*/
-    else
-      writeln("Wrong parameter to RandomGen().");
     return 0;
   }
 
