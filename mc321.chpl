@@ -273,5 +273,5 @@ proc main() {
   }
   writeln("Number of photons : ", Nphotons);
   writeln("MPhotons/s : ", Nphotons/t.elapsed()/1_000_000);
-  writeln("Elapsed time : ", t.elapsed());
+  writeln("Elapsed time(s) : ", t.elapsed());
 } /* end of main */

@@ -23,6 +23,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 
 
@@ -123,6 +124,8 @@ int main() {
     Cpla[ir] = 0;
   }
 
+  struct timeval t0, t1;
+  gettimeofday(&t0, NULL);
   /**** RUN
     Launch N photons, initializing each one before progation.
    *****/
@@ -254,6 +257,13 @@ int main() {
     /* If photon dead, then launch new photon. */
   } /* end RUN */
   while (i_photon < Nphotons);
+  gettimeofday(&t1, NULL);
+  long double elapsed = (1.0*(t1.tv_sec-t0.tv_sec)*1000000LL +
+                         t1.tv_usec-t0.tv_usec) / 1000000LL;
+
+  printf("Number of photons : %d\n", (int)Nphotons);
+  printf("Mphotons/s : %Lf\n", Nphotons/elapsed/1000000);
+  printf("Elapsed time(s) : %Lf\n", elapsed);
 
 
   /**** SAVE
