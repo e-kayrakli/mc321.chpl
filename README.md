@@ -32,7 +32,7 @@ powerful ones that I can test with as well.
 |-------------------------|----------------|---------------------|---------------
 |Time (s)                 |  83.57         | 6.67                | 0.80
 |Throughput (MPhotons/s)  |  11.97         | 149.94              | 1254.21
-|Relative Performance     |  1.0x          | 12.53x              | 104.78
+|Relative Performance     |  1.0x          | 12.53x              | 104.78x
 
 
 - Chapel 2.2 (compiled with only `--fast`)
