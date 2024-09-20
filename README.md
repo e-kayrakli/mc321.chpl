@@ -22,12 +22,34 @@
 
 ### Performance
 
-Just using `time`, I see that the Chapel version runs in 32 seconds compared to
-C's 69 seconds using 1B photons. The GPU-enabled Chapel version is right now the
-first working prototype and can benefit from several optimizations.
+Below are some results. The Chapel version uses 1M GPU threads. All runs are
+using 1B photons.
+
+RTX A2000 is a low-end GPU, whereas A100 is an HPC-grade GPU. There are more
+powerful ones that I can test with as well.
+
+|                         |  Sequential C  | Chapel w/ RTX A2000 | Chapel w/ A100
+|-------------------------|----------------|---------------------|---------------
+|Time (s)                 |  83.57         | 6.67                | 0.80
+|Throughput (MPhotons/s)  |  11.97         | 149.94              | 1254.21
+|Relative Performance     |  1.0x          | 12.53x              | 104.78
 
 
-- CPU: i5-11400 (6 cores)
-- GPU: RTX A2000
 - Chapel 2.2 (compiled with only `--fast`)
 - gcc 13.2 (compiled with `-O3 -lm`)
+
+#### Pushing the limits
+
+On A100, I wanted to see how high the throughput can get and played around a bit
+with number of photons and threads. With 100B photons and 100M threads, I get
+the following, which was the highest throughput I've seen so far:
+
+```
+Number of photons : 100000000000
+MPhotons/s : 1384.64
+Elapsed time : 72.2208
+```
+
+This is about 115x better throughput than the sequential C version.
+
+
