@@ -22,7 +22,7 @@
  **********/
 
 
-use Math, GPU;
+use Math, GPU, Time;
 use RandomNumberGenerators;
 
 config param useCudaRng = false;
@@ -33,20 +33,11 @@ record photon {
   /* Propagation parameters */
   var x, y, z:real;    /* photon position */
   var ux, uy, uz:real; /* photon trajectory as cosines */
-  var s:real;          /* step sizes. s = -log(RND)/mus [cm] */
-  var costheta:real;   /* cos(theta) */
-  var sintheta:real;   /* sin(theta) */
-  var cospsi:real;     /* cos(psi) */
-  var sinpsi:real;     /* sin(psi) */
-  var psi:real;        /* azimuthal angle */
   var W:real;          /* photon weight */
   var absorb:real;     /* weighted deposited in a step due to absorption */
-  var photon_status: int;  /* flag = ALIVE=1 or DEAD=0 */ // TODO enum
+  var photon_status: int(8);  /* flag = ALIVE=1 or DEAD=0 */ // TODO enum
 
-  var	r: real;          /* radial position */
-  var   ir: int(16);         /* index to radial position */
-
-  var rng: RNG;
+  var x2Plusy2: real;
 }
 
 config const	Nphotons = 10_000_000;   /* number of photons in simulation */
@@ -75,9 +66,7 @@ param NR: int(16) = 100;         /* number of radial positions */
 param dr = radial_size/NR;         /* radial bin size */
 param	albedo = mus/(mus+mua);     /* albedo of tissue */
 
-proc photon.init(idx) {
-  rng = new RNG(idx);
-
+proc photon.init(ref rng) {
   init this;
   /**** LAUNCH
     Initialize photon position and trajectory.
@@ -91,55 +80,53 @@ proc photon.init(idx) {
   z = 0;
 
   /* Randomly set photon trajectory to yield an isotropic source. */
-  costheta = 2.0*RandomNum - 1.0;
-  sintheta = sqrt(1.0 - costheta*costheta);	/* sintheta is always positive */
-  psi = 2.0*PI*RandomNum;
+  const costheta = 2.0*rng.next() - 1.0;
+  const sintheta = sqrt(1.0 - costheta*costheta);	/* sintheta is always positive */
+  const psi = 2.0*PI*rng.next();
   ux = sintheta*cos(psi);
   uy = sintheta*sin(psi);
   uz = costheta;
 }
 
-/* Calls for a random number from the randum number generator. */
-proc ref photon.RandomNum {
-  return rng.next();
-}
-
-proc ref photon.hop() {
+inline proc ref photon.hop(ref rng) {
   var  rnd: real;        /* assigned random value 0-1 */
-  do { rnd = RandomNum; } while rnd <= 0.0; /* yields 0 < rnd <= 1 */
-  s = -log(rnd)/(mua + mus);          /* Step size.  Note: log() is base e */
+  do { rnd = rng.next(); } while rnd <= 0.0; /* yields 0 < rnd <= 1 */
+  const s = -log(rnd)/(mua + mus);          /* Step size.  Note: log() is base e */
   x += s * ux;                        /* Update positions. */
   y += s * uy;
   z += s * uz;
+
+  x2Plusy2 = x*x + y*y;
 }
 
-proc ref photon.drop() {
+inline proc ref photon.drop() {
   absorb = W*(1 - albedo);      /* photon weight absorbed at this step */
   W -= absorb;                  /* decrement WEIGHT by amount absorbed */
 }
 
-proc ref photon.spherical() {
-  r = sqrt(x*x + y*y + z*z);    /* current spherical radial position */
-  ir = (r/dr): int(16);           /* ir = index to spatial bin */
-  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+inline proc ref photon.spherical() {
+  const r = sqrt(x2Plusy2 + z*z);    /* current spherical radial position */
+  const ir = min((r/dr): int(16), NR);
+  return ir;
 }
 
-proc ref photon.cylindrical() {
-  r = sqrt(x*x + y*y);          /* current cylindrical radial position */
-  ir = (r/dr): int(16);           /*[> ir = index to spatial bin <]*/
-  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+inline proc ref photon.cylindrical() {
+  const r = sqrt(x2Plusy2);          /* current cylindrical radial position */
+  const ir = min((r/dr): int(16), NR);
+  return ir;
 }
 
-proc ref photon.planar() {
-  r = abs(z);                  /* current planar radial position */
-  ir = (r/dr): int(16);           /* ir = index to spatial bin */
-  if (ir >= NR) then ir = NR: int(16);        /* last bin is for overflow */
+inline proc ref photon.planar() {
+  const r = abs(z);                  /* current planar radial position */
+  const ir = min((r/dr): int(16), NR);
+  return ir;
 }
 
-proc ref photon.spin() {
+inline proc ref photon.spin(ref rng) {
   var uxx, uyy, uzz:real;	/* temporary values used during SPIN */
   /* Sample for costheta */
-  var rnd = RandomNum;
+  var rnd = rng.next();
+  const costheta;
   if (g == 0.0) {
     costheta = 2.0*rnd - 1.0;
   }
@@ -147,11 +134,12 @@ proc ref photon.spin() {
     const temp = (1.0 - g*g)/(1.0 - g + 2*g*rnd);
     costheta = (1.0 + g*g - temp*temp)/(2.0*g);
   }
-  sintheta = sqrt(1.0 - costheta*costheta); /* sqrt() is faster than sin(). */
+  const sintheta = sqrt(1.0 - costheta*costheta); /* sqrt() is faster than sin(). */
 
   /* Sample psi. */
-  psi = 2.0*PI*RandomNum;
-  cospsi = cos(psi);
+  const psi = 2.0*PI*rng.next();
+  const cospsi = cos(psi);
+  const sinpsi;
   if (psi < PI) then
     sinpsi = sqrt(1.0 - cospsi*cospsi);     /* sqrt() is faster than sin(). */
   else
@@ -176,73 +164,88 @@ proc ref photon.spin() {
   uz = uzz;
 }
 
-proc ref photon.update() {
+proc ref photon.update(ref rng) {
   if (W < THRESHOLD) {
-    if (RandomNum <= CHANCE) then
+    if (rng.next() <= CHANCE) then
       W /= CHANCE;
     else photon_status = DEAD;
   }
 }
 
 config const useGpu = true;
+config const numGpuThreads = 10_000;
+const NphotonsPerGpu = Nphotons/numGpuThreads;
+
 
 proc main() {
+  var t: stopwatch;
+
   on if useGpu then here.gpus[0] else here {
     /* other variables */
     var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
     var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
     var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
+    t.start();
     /**** RUN
       Launch N photons, initializing each one before progation.
      *****/
     @gpu.assertEligible
-    foreach i_photon in 0..<Nphotons {
-      var p = new photon(i_photon);
+    foreach thread in 0..<numGpuThreads {
+      var rng = new RNG(thread);
 
-      /* HOP_DROP_SPIN_CHECK
-         Propagate one photon until it dies as determined by ROULETTE.
-       *******/
-      do {
-        /**** HOP
-          Take step to new position
-          s = stepsize
-          ux, uy, uz are cosines of current photon trajectory
-         *****/
-        p.hop();
+      for i_photon in 0..<NphotonsPerGpu {
+        var p = new photon(rng);
 
-        /**** DROP
-          Drop photon weight (W) into local bin.
-         *****/
-        p.drop();
+        /* HOP_DROP_SPIN_CHECK
+           Propagate one photon until it dies as determined by ROULETTE.
+         *******/
+        do {
+          /**** HOP
+            Take step to new position
+            s = stepsize
+            ux, uy, uz are cosines of current photon trajectory
+           *****/
+          p.hop(rng);
 
-        p.spherical();
-        gpuAtomicAdd(Csph[p.ir], p.absorb);  /* DROP absorbed weight into bin */
+          /**** DROP
+            Drop photon weight (W) into local bin.
+           *****/
+          p.drop();
 
-        p.cylindrical();
-        gpuAtomicAdd(Ccyl[p.ir], p.absorb);   /* DROP absorbed weight into bin */
+          /* DROP absorbed weight into bin */
+          gpuAtomicAdd(Csph[p.spherical()], p.absorb);
+          /*Csph[p.spherical()] += p.absorb;*/
 
-        p.planar();
-        gpuAtomicAdd(Cpla[p.ir], p.absorb);           /* DROP absorbed weight into bin */
+          /* DROP absorbed weight into bin */
+          gpuAtomicAdd(Ccyl[p.cylindrical()], p.absorb);
+          /*Ccyl[p.cylindrical()] += p.absorb;*/
 
-        /**** SPIN
-          Scatter photon into new trajectory defined by theta and psi.
-          Theta is specified by cos(theta), which is determined
-          based on the Henyey-Greenstein scattering function.
-          Convert theta and psi into cosines ux, uy, uz.
-         *****/
-        p.spin();
+          /* DROP absorbed weight into bin */
+          gpuAtomicAdd(Cpla[p.planar()], p.absorb);
+          /*Cpla[p.planar()] += p.absorb;*/
 
-        /**** CHECK ROULETTE
-          If photon weight below THRESHOLD, then terminate photon using Roulette
-          technique.  Photon has CHANCE probability of having its weight increased
-          by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
-        p.update();
-      } /* end STEP_CHECK_HOP_SPIN */
-      while (p.photon_status == ALIVE);
+          /**** SPIN
+            Scatter photon into new trajectory defined by theta and psi.
+            Theta is specified by cos(theta), which is determined
+            based on the Henyey-Greenstein scattering function.
+            Convert theta and psi into cosines ux, uy, uz.
+           *****/
+          p.spin(rng);
 
-      /* If photon dead, then launch new photon. */
-    } /* end RUN */
+          /**** CHECK ROULETTE
+            If photon weight below THRESHOLD, then terminate photon using Roulette
+            technique.  Photon has CHANCE probability of having its weight increased
+            by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
+          p.update(rng);
+        } /* end STEP_CHECK_HOP_SPIN */
+        while (p.photon_status == ALIVE);
+        /*while false;*/
+
+        /* If photon dead, then launch new photon. */
+      } /* end RUN */
+    }
+    t.stop();
 
     /* print header */
     writef("number of photons = %i\n", Nphotons);
@@ -268,4 +271,7 @@ proc main() {
       writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
     }
   }
+  writeln("Number of photons : ", Nphotons);
+  writeln("MPhotons/s : ", Nphotons/t.elapsed()/1_000_000);
+  writeln("Elapsed time : ", t.elapsed());
 } /* end of main */

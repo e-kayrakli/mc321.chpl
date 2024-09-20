@@ -1,7 +1,6 @@
 module RandomNumberGenerators {
-  require "curand_kernel.h";
   require "kernel_rng.h";
-  extern type curandState_t;
+  extern "curandState_t" type curandState_t;
 
   pragma "codegen for CPU and GPU"
   extern proc rng_init(seed, idx, ref state: curandState_t): void;
