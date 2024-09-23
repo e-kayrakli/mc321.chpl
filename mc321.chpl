@@ -21,13 +21,11 @@
  *  Trivial fixes to remove warnings SAP, 11/2017
  **********/
 
-
 use Math, GPU, Time;
 use RandomNumberGenerators;
 
 config param useCudaRng = false;
 type RNG = if useCudaRng then CudaRng else Mc321Rng;
-
 
 record photon {
   /* Propagation parameters */
@@ -187,9 +185,7 @@ proc main() {
     var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
     t.start();
-    /**** RUN
-      Launch N photons, initializing each one before progation.
-     *****/
+
     @gpu.assertEligible
     foreach thread in 0..<numGpuThreads {
       var rng = new RNG(thread);
@@ -197,52 +193,26 @@ proc main() {
       for i_photon in 0..<NphotonsPerGpu {
         var p = new photon(rng);
 
-        /* HOP_DROP_SPIN_CHECK
-           Propagate one photon until it dies as determined by ROULETTE.
-         *******/
         do {
-          /**** HOP
-            Take step to new position
-            s = stepsize
-            ux, uy, uz are cosines of current photon trajectory
-           *****/
           p.hop(rng);
 
-          /**** DROP
-            Drop photon weight (W) into local bin.
-           *****/
           p.drop();
 
           /* DROP absorbed weight into bin */
           gpuAtomicAdd(Csph[p.spherical()], p.absorb);
-          /*Csph[p.spherical()] += p.absorb;*/
 
           /* DROP absorbed weight into bin */
           gpuAtomicAdd(Ccyl[p.cylindrical()], p.absorb);
-          /*Ccyl[p.cylindrical()] += p.absorb;*/
 
           /* DROP absorbed weight into bin */
           gpuAtomicAdd(Cpla[p.planar()], p.absorb);
-          /*Cpla[p.planar()] += p.absorb;*/
 
-          /**** SPIN
-            Scatter photon into new trajectory defined by theta and psi.
-            Theta is specified by cos(theta), which is determined
-            based on the Henyey-Greenstein scattering function.
-            Convert theta and psi into cosines ux, uy, uz.
-           *****/
           p.spin(rng);
 
-          /**** CHECK ROULETTE
-            If photon weight below THRESHOLD, then terminate photon using Roulette
-            technique.  Photon has CHANCE probability of having its weight increased
-            by factor of 1/CHANCE, and 1-CHANCE probability of terminating.  *****/
           p.update(rng);
-        } /* end STEP_CHECK_HOP_SPIN */
+        }
         while (p.photon_status == ALIVE);
-        /*while false;*/
 
-        /* If photon dead, then launch new photon. */
       } /* end RUN */
     }
     t.stop();
