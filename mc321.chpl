@@ -172,75 +172,83 @@ proc ref photon.update(ref rng) {
 
 config const useGpu = true;
 config const numGpuThreads = 10_000;
-const NphotonsPerGpu = Nphotons/numGpuThreads;
+
+const numGpus = Locales.size*here.gpus.size;
+const NphotonsPerGpuThread = Nphotons/numGpus/numGpuThreads;
 
 
 proc main() {
   var t: stopwatch;
 
-  on if useGpu then here.gpus[0] else here {
-    /* other variables */
-    var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
-    var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
-    var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
+  var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
+  var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
+  var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
 
-    t.start();
+  t.start();
 
-    @gpu.assertEligible
-    foreach thread in 0..<numGpuThreads {
-      var rng = new RNG(thread);
+  coforall loc in Locales with (+ reduce Csph,
+                                + reduce Ccyl,
+                                + reduce Cpla) do on loc {
+    coforall gpu in here.gpus with (+ reduce Csph,
+                                    + reduce Ccyl,
+                                    + reduce Cpla) do on gpu {
+      @gpu.assertEligible
+      foreach thread in 0..<numGpuThreads {
+        var rng = new RNG(thread);
 
-      for i_photon in 0..<NphotonsPerGpu {
-        var p = new photon(rng);
+        for i_photon in 0..<NphotonsPerGpuThread {
+          var p = new photon(rng);
 
-        do {
-          p.hop(rng);
+          do {
+            p.hop(rng);
 
-          p.drop();
+            p.drop();
 
-          /* DROP absorbed weight into bin */
-          gpuAtomicAdd(Csph[p.spherical()], p.absorb);
+            /* DROP absorbed weight into bin */
+            gpuAtomicAdd(Csph[p.spherical()], p.absorb);
 
-          /* DROP absorbed weight into bin */
-          gpuAtomicAdd(Ccyl[p.cylindrical()], p.absorb);
+            /* DROP absorbed weight into bin */
+            gpuAtomicAdd(Ccyl[p.cylindrical()], p.absorb);
 
-          /* DROP absorbed weight into bin */
-          gpuAtomicAdd(Cpla[p.planar()], p.absorb);
+            /* DROP absorbed weight into bin */
+            gpuAtomicAdd(Cpla[p.planar()], p.absorb);
 
-          p.spin(rng);
+            p.spin(rng);
 
-          p.update(rng);
-        }
-        while (p.photon_status == ALIVE);
+            p.update(rng);
+          }
+          while (p.photon_status == ALIVE);
 
-      } /* end RUN */
-    }
-    t.stop();
-
-    /* print header */
-    writef("number of photons = %i\n", Nphotons);
-    writef("bin size = %5.5dr [cm] \n", dr);
-    writef("last row is overflow. Ignore.\n");
-
-    /* print column titles */
-    writef("r [cm] \t Fsph [1/cm2] \t Fcyl [1/cm2] \t Fpla [1/cm2]\n");
-
-    /* print data:  radial position, fluence rates for 3D, 2D, 1D geometries */
-    for ir in 0..NR {
-      /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
-      const r = (ir + 0.5)*dr;
-      var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
-      /* fluence in spherical shell */
-      const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
-      shellvolume = 2.0*PI*r*dr;   /* per cm length of cylinder */
-      /* fluence in cylindrical shell */
-      const Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
-      shellvolume = dr;            /* per cm2 area of plane */
-      /* fluence in planar shell */
-      const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
-      writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
+        } /* end RUN */
+      }
     }
   }
+  t.stop();
+
+  /* print header */
+  writef("number of photons = %i\n", Nphotons);
+  writef("bin size = %5.5dr [cm] \n", dr);
+  writef("last row is overflow. Ignore.\n");
+
+  /* print column titles */
+  writef("r [cm] \t Fsph [1/cm2] \t Fcyl [1/cm2] \t Fpla [1/cm2]\n");
+
+  /* print data:  radial position, fluence rates for 3D, 2D, 1D geometries */
+  for ir in 0..NR {
+    /* r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr; */
+    const r = (ir + 0.5)*dr;
+    var shellvolume = 4.0*PI*r*r*dr; /* per spherical shell */
+    /* fluence in spherical shell */
+    const Fsph = Csph[ir]/Nphotons/shellvolume/mua;
+    shellvolume = 2.0*PI*r*dr;   /* per cm length of cylinder */
+    /* fluence in cylindrical shell */
+    const Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua;
+    shellvolume = dr;            /* per cm2 area of plane */
+    /* fluence in planar shell */
+    const Fpla =Cpla[ir]/Nphotons/shellvolume/mua;
+    writef("%5.5dr \t %4.3er \t %4.3er \t %4.3er \n", r, Fsph, Fcyl, Fpla);
+  }
+
   writeln("Number of photons : ", Nphotons);
   writeln("MPhotons/s : ", Nphotons/t.elapsed()/1_000_000);
   writeln("Elapsed time(s) : ", t.elapsed());
