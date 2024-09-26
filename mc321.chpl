@@ -25,7 +25,31 @@ use Math, GPU, Time;
 use RandomNumberGenerators;
 
 config param useCudaRng = false;
+
+config const Nphotons = 10_000_000;   /* number of photons in simulation */
+config const useGpu = true;
+config const numGpuThreads = 10_000;
+
 type RNG = if useCudaRng then CudaRng else Mc321Rng;
+const numGpus = Locales.size*here.gpus.size;
+const NphotonsPerGpuThread = Nphotons/numGpus/numGpuThreads;
+
+param PI         = 3.1415926;
+param LIGHTSPEED = 2.997925E10; /* in vacuo speed of light [cm/s] */
+param ALIVE      = 1;		/* if photon not yet terminated */
+param DEAD       = 0;		/* if photon is to be terminated */
+param THRESHOLD  = 0.01;	/* used in roulette */
+param CHANCE     = 0.1;		/* used in roulette */
+param COS90D     = 1.0E-6;
+param ONE_MINUS_COSZERO = 1.0E-12;
+param mua = 1.0;           /* absorption coefficient [cm^-1] */
+param mus = 0.0;           /* scattering coefficient [cm^-1] */
+param g = 0.90;            /* anisotropy [-] */
+param nt = 1.33;           /* tissue index of refraction */
+param radial_size = 3.0;   /* maximum radial size */
+param NR = 100;                    /* number of radial positions */
+param dr = radial_size/NR;         /* radial bin size */
+param albedo = mus/(mus+mua);    /* albedo of tissue */
 
 record photon {
   /* Propagation parameters */
@@ -37,32 +61,6 @@ record photon {
 
   var x2Plusy2: real;
 }
-
-config const	Nphotons = 10_000_000;   /* number of photons in simulation */
-
-param PI         = 3.1415926;
-param LIGHTSPEED = 2.997925E10; /* in vacuo speed of light [cm/s] */
-param ALIVE      = 1;		/* if photon not yet terminated */
-param DEAD       = 0;		/* if photon is to be terminated */
-param THRESHOLD  = 0.01;		/* used in roulette */
-param CHANCE     = 0.1;		/* used in roulette */
-param COS90D     = 1.0E-6;
-/* If cos(theta) <= COS90D, theta >= PI/2 - 1e-6 rad. */
-param ONE_MINUS_COSZERO = 1.0E-12;
-/* If 1-cos(theta) <= ONE_MINUS_COSZERO, fabs(theta) <= 1e-6 rad. */
-/* If 1+cos(theta) <= ONE_MINUS_COSZERO, fabs(PI-theta) <= 1e-6 rad. */
-inline proc SIGN(x) do return (if x>=0 then 1 else -1);
-
-
-param	mua = 1.0;        /* absorption coefficient [cm^-1] */
-param	mus = 0.0;        /* scattering coefficient [cm^-1] */
-param	g = 0.90;          /* anisotropy [-] */
-param	nt = 1.33;         /* tissue index of refraction */
-param	radial_size = 3.0;  /* maximum radial size */
-/* IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. */
-param NR: int(16) = 100;         /* number of radial positions */
-param dr = radial_size/NR;         /* radial bin size */
-param	albedo = mus/(mus+mua);     /* albedo of tissue */
 
 proc photon.init(ref rng) {
   init this;
@@ -104,19 +102,19 @@ inline proc ref photon.drop() {
 
 inline proc ref photon.spherical() {
   const r = sqrt(x2Plusy2 + z*z);    /* current spherical radial position */
-  const ir = min((r/dr): int(16), NR);
+  const ir = min((r/dr): int, NR);
   return ir;
 }
 
 inline proc ref photon.cylindrical() {
   const r = sqrt(x2Plusy2);          /* current cylindrical radial position */
-  const ir = min((r/dr): int(16), NR);
+  const ir = min((r/dr): int, NR);
   return ir;
 }
 
 inline proc ref photon.planar() {
   const r = abs(z);                  /* current planar radial position */
-  const ir = min((r/dr): int(16), NR);
+  const ir = min((r/dr): int, NR);
   return ir;
 }
 
@@ -169,20 +167,16 @@ proc ref photon.update(ref rng) {
     else photon_status = DEAD;
   }
 }
-
-config const useGpu = true;
-config const numGpuThreads = 10_000;
-
-const numGpus = Locales.size*here.gpus.size;
-const NphotonsPerGpuThread = Nphotons/numGpus/numGpuThreads;
-
+/* If 1-cos(theta) <= ONE_MINUS_COSZERO, fabs(theta) <= 1e-6 rad. */
+/* If 1+cos(theta) <= ONE_MINUS_COSZERO, fabs(PI-theta) <= 1e-6 rad. */
+inline proc SIGN(x) do return (if x>=0 then 1 else -1);
 
 proc main() {
   var t: stopwatch;
 
-  var	Csph: [0..100] real;  /* spherical   photon concentration CC[ir=0..100] */
-  var	Ccyl: [0..100] real;  /* cylindrical photon concentration CC[ir=0..100] */
-  var	Cpla: [0..100] real;  /* planar      photon concentration CC[ir=0..100] */
+  var	Csph: [0..NR] real;  /* spherical   photon concentration CC[ir=0..100] */
+  var	Ccyl: [0..NR] real;  /* cylindrical photon concentration CC[ir=0..100] */
+  var	Cpla: [0..NR] real;  /* planar      photon concentration CC[ir=0..100] */
 
   t.start();
 
