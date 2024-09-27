@@ -42,14 +42,15 @@ param THRESHOLD  = 0.01;	/* used in roulette */
 param CHANCE     = 0.1;		/* used in roulette */
 param COS90D     = 1.0E-6;
 param ONE_MINUS_COSZERO = 1.0E-12;
-param mua = 1.0;           /* absorption coefficient [cm^-1] */
-param mus = 0.0;           /* scattering coefficient [cm^-1] */
-param g = 0.90;            /* anisotropy [-] */
-param nt = 1.33;           /* tissue index of refraction */
-param radial_size = 3.0;   /* maximum radial size */
-param NR = 100;                    /* number of radial positions */
-param dr = radial_size/NR;         /* radial bin size */
-param albedo = mus/(mus+mua);    /* albedo of tissue */
+
+config const mua = 1.0;           /* absorption coefficient [cm^-1] */
+config const mus = 10.0;          /* scattering coefficient [cm^-1] */
+config const g = 0.90;            /* anisotropy [-] */
+config const nt = 1.33;           /* tissue index of refraction */
+config const radial_size = 3.0;   /* maximum radial size */
+config const NR = 1000;           /* number of radial positions */
+const dr = radial_size/NR;        /* radial bin size */
+const albedo = mus/(mus+mua);     /* albedo of tissue */
 
 record photon {
   /* Propagation parameters */
